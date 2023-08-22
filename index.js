@@ -1,7 +1,23 @@
+/*  Washcoin mqtt relay version 1.0.0
+    Purpose for control TASMOTA device (using firmware from tasmota) without using IOT from Washcoin.
+    Requirement:
+        1. Device must install TASMOTA firmware.
+        2. Device must configuration MQTT to
+           2.1 HOST: as Washcoin mqtt:    Ex. glad-whale.rmq.cloudamqp.com   PORT:1883
+           2.2 USER: as mqtt need.  Ex. user: ilsrjeyw   pass: 1riEi7_wHGpUA7r-oF76FF4ay81diLJr
+           2.3 TOPIC: %12X
+           2.4 FULL TOPIC:  relay/%prefix%/%topic%
+
+
+    Functional.
+        1. Detect mqtt command for specific device in "deviceList" from sourceMqtt.
+        2. Send that command via targetMqtt to specific device.
+        3. Perform action on that device and reply the result back to sourceMqtt.
+*/
+
 import { connect } from "mqtt";
 import { sourceMqtt, targetMqtt } from "./mqttcfg.js";
 import { deviceList } from "./devicelist.js";
-// import { wifiInfo } from "./mqtt2.js";
 
 
 const production = 1;
@@ -10,6 +26,7 @@ let rssi = null;
 let powerState = 0;
 let currentValue = 0;
 
+//*******************************  SourceMqtt Connection ********************************
 let clientSource = connect({
     host: sourceMqtt.mqttHost,
     port: sourceMqtt.mqttPort,
@@ -19,14 +36,16 @@ let clientSource = connect({
 })
 
 clientSource.on('connect', () => {
-    console.log('Connected to Source MQTT broker (Glad Whale)');
-    clientSource.subscribe('washcoin/#', (err) => {
+    console.log('Source MQTT: '+ sourceMqtt.mqttName + '...Connected');
+    clientSource.subscribe(sourceMqtt.mqttTopic, (err) => {
         if (err) {
             console.error(err);
         }
     });
 });
 
+
+//*******************************  TargetMqtt Connecting ********************************
 let clientTarget = connect({
     host: targetMqtt.mqttHost,
     port: targetMqtt.mqttPort,
@@ -36,8 +55,9 @@ let clientTarget = connect({
 })
 
 clientTarget.on('connect', () => {
-    console.log('Connected to Target MQTT broker');
-    clientTarget.subscribe('rgh18/stat/#', (err) => {
+    console.log('Target MQTT: '+targetMqtt.mqttName +'...Connected');
+    // clientTarget.subscribe('relay/stat/#', (err) => {
+    clientTarget.subscribe(targetMqtt.mqttTopic, (err) => {
         if (err) {
             console.error(err);
         }
@@ -45,7 +65,7 @@ clientTarget.on('connect', () => {
 })
 
 
-// Flipup mqtt
+//*******************************  TargetMqtt command function ********************************
 clientTarget.on('message', async(topic, message) => {
     const uuid = topic.split('/')[2]
     // console.log("Target uuid: ",uuid);
@@ -59,14 +79,15 @@ clientTarget.on('message', async(topic, message) => {
             const statusSTS = payload.StatusSTS;
             const wifi = statusSTS.Wifi;
 
-            console.log("STATUS11 Wifi Info of:",uuid)
+            console.log(`[STATUS 11] Wifi Info of: ${uuid}`)
             console.log(wifi)
             rssi = wifi.RSSI;
         }
 
         if((device.target.uuid === uuid) && (action === "STATUS8")){
             const payload = JSON.parse(message.toString());
-            // console.log("STATUS8 payload: ",payload)
+
+            console.log("[STATUS 8] Info")
             console.log("Time: ",payload.StatusSNS.Time)
             console.log("Voltage: ",payload.StatusSNS.ENERGY.Voltage)
             console.log("Current: ",payload.StatusSNS.ENERGY.Current)
@@ -75,36 +96,36 @@ clientTarget.on('message', async(topic, message) => {
         if((device.target.uuid === uuid) && (action === "RESULT")){
             const payload = JSON.parse(message.toString());
             powerState = payload.POWER.toUpperCase()
+
+            console.log("[RESULT]")
         }
     }
 })
 
 
 
-// Washcoin mqtt
+//****************************  Washcoin mqtt command function ****************************
 clientSource.on('message', async(topic, message) => {
-    // console.log(topic, message.toString());
-
+    
     const uuid = topic.split('/')[1];
-    // console.log(uuid);
 
     //Main loop only device in deviceList
     for (const device of deviceList) {
         if (device.source.uuid === uuid) {
-            console.log(`Message from ${device.source.name} : ${uuid}`);
+            console.log(`Device ${device.source.name} : ${uuid}`);
 
             const payload = JSON.parse(message.toString());
-            console.log("Received payload: ",payload.values);
+            console.log("   |-Received payload: ",payload.values);
 
             // Set publishTopic for target mqtt server
             const publishTopic = device.target.publishTopic.prefix + device.target.uuid + device.target.publishTopic.subfix;
-            console.log("publishTopic: ",publishTopic)
+            console.log("   |-publishTopic: ",publishTopic)
 
             if(payload.values[0].key === "cmd_ping"){
                 // Send publish to check rssi
                 clientTarget.publish(publishTopic, JSON.stringify({"status": "11"}))
                 setTimeout(() => {
-                    console.log("RSSI now is: ",rssi)
+                    console.log("Device RSSI now is: ",rssi)
                     if(rssi != null){
                         clientSource.publish(`washcoin/${uuid}`, JSON.stringify({
                             values:[
@@ -113,8 +134,8 @@ clientSource.on('message', async(topic, message) => {
                             ]
                         }))
                     }
-                }, 500)
-                console.log("Published ans_status back to washcoin \n");
+                },500)
+                console.log(`   |-Published ans_status to sourceMQTT: ${sourceMqtt.mqttName}`);
             }
 
 
@@ -191,7 +212,7 @@ clientSource.on('message', async(topic, message) => {
                     }
                 },(miliTimer+500))
             }
-
+            /* --------------------------------------- Ending For Dryer machine only -------------------------------- */
 
             /* --------------------------------------- For Washing machine only -------------------------------- */
             if(payload.values[0].key === "cmd_counter3"){
@@ -234,7 +255,7 @@ clientSource.on('message', async(topic, message) => {
                 setTimeout(()=>{
                     let zeroCounter = 0
                     let responseFlag = 0
-                    const intervalID = setInterval(()=>{
+                    const intervalID = setInterval(()=>{ // every 30s check current value
                         clientTarget.publish(publishTopic, JSON.stringify({"status": "8"}))
                         if(currentValue <= 0.15){
                             zeroCounter++
@@ -275,12 +296,12 @@ clientSource.on('message', async(topic, message) => {
                         }else{
                             zeroCounter = 0
                         }
-                    },30000)
+                    },30000) // every 30s
                 },miliTimer)
             }
+            /* --------------------------------------- Ending For Washing machine only -------------------------------- */
 
-
-            /* --------------------------------------- For Power on, Power off machine -------------------------------- */
+            /* --------------------------------------- For Power on, Power off All machine type -------------------------------- */
             if(payload.values[0].key === "cmd_power"){
                 if(payload.values[0].value === "on"){
                     console.log("Turn ON machine: ",device.target.name);
@@ -304,7 +325,7 @@ clientSource.on('message', async(topic, message) => {
                 }
 
             }
-
+            /* --------------------------------------- Ending For Power on, Power off All machine type -------------------------------- */
         }
     }
 })

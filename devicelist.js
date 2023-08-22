@@ -1,33 +1,33 @@
 const deviceList = [
-    // {
-    //     "source":{
-    //         "name":"DF-96",
-    //         "uuid":"GH485S9W5482OQ2W5X7Z",
-    //         "type":"dryer",            
-    //         "subscribeTopic":{
-    //             "prefix":"washcoin/",
-    //             "subfix":"",
-    //         },
-    //         "publishTopic":{
-    //             "prefix":"washcoin/",
-    //             "subfix":"",
-    //         },
+    {
+        "source":{
+            "name":"DF-96",
+            "uuid":"GH485S9W5482OQ2W5X7Z",
+            "type":"dryer",            
+            "subscribeTopic":{
+                "prefix":"washcoin/",
+                "subfix":"",
+            },
+            "publishTopic":{
+                "prefix":"washcoin/",
+                "subfix":"",
+            },
             
-    //     },
-    //     "target":{
-    //         "name":"DF-96",
-    //         "uuid":"C049EFEFD5CC",
-    //         "type":"dryer",
-    //         "subscribeTopic":{
-    //             "prefix":"rgh18/stat/",
-    //             "subfix":"",
-    //         },
-    //         "publishTopic":{
-    //             "prefix":"rgh18/cmnd/",
-    //             "subfix":"/json",
-    //         },   
-    //     }
-    // },
+        },
+        "target":{
+            "name":"DF-96",
+            "uuid":"C049EFEFD5CC",
+            "type":"dryer",
+            "subscribeTopic":{
+                "prefix":"relay/stat/",
+                "subfix":"",
+            },
+            "publishTopic":{
+                "prefix":"relay/cmnd/",
+                "subfix":"/json",
+            },   
+        }
+    },
     {
         "source":{
             "name":"WF-103",
@@ -48,11 +48,11 @@ const deviceList = [
             "uuid":"C049EFEFBC80",
             "type":"washer",
             "subscribeTopic":{
-                "prefix":"rgh18/stat/",
+                "prefix":"relay/stat/",
                 "subfix":"",
             },
             "publishTopic":{
-                "prefix":"rgh18/cmnd/",
+                "prefix":"relay/cmnd/",
                 "subfix":"/json",
             },   
         }

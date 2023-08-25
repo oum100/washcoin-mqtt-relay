@@ -7,6 +7,7 @@
            2.2 USER: as mqtt need.  Ex. user: ilsrjeyw   pass: 1riEi7_wHGpUA7r-oF76FF4ay81diLJr
            2.3 TOPIC: %12X
            2.4 FULL TOPIC:  relay/%prefix%/%topic%
+           2.5 set "pulseTime1" to 0    {"pulseTime1":"0"}
 
 
     Functional.
@@ -25,6 +26,7 @@ const production = 1;
 let rssi = null;
 let powerState = 0;
 let currentValue = 0;
+let responseFlag = 0;
 
 //*******************************  SourceMqtt Connection ********************************
 let clientSource = connect({
@@ -37,7 +39,7 @@ let clientSource = connect({
 
 clientSource.on('connect', () => {
     console.log('Source MQTT: '+ sourceMqtt.mqttName + '...Connected');
-    clientSource.subscribe(sourceMqtt.mqttTopic, (err) => {
+    clientSource.subscribe(sourceMqtt.mqttSubTopic, (err) => {
         if (err) {
             console.error(err);
         }
@@ -57,7 +59,7 @@ let clientTarget = connect({
 clientTarget.on('connect', () => {
     console.log('Target MQTT: '+targetMqtt.mqttName +'...Connected');
     // clientTarget.subscribe('relay/stat/#', (err) => {
-    clientTarget.subscribe(targetMqtt.mqttTopic, (err) => {
+    clientTarget.subscribe(targetMqtt.mqttSubTopic, (err) => {
         if (err) {
             console.error(err);
         }
@@ -86,18 +88,32 @@ clientTarget.on('message', async(topic, message) => {
 
         if((device.target.uuid === uuid) && (action === "STATUS8")){
             const payload = JSON.parse(message.toString());
+            currentValue = 0
 
             console.log("[STATUS 8] Info")
             console.log("Time: ",payload.StatusSNS.Time)
             console.log("Voltage: ",payload.StatusSNS.ENERGY.Voltage)
             console.log("Current: ",payload.StatusSNS.ENERGY.Current)
+            console.log("\n")
+
+            currentValue = payload.StatusSNS.ENERGY.Current
+            console.log("[STATUS 8] Current value: ",currentValue)
         }
 
         if((device.target.uuid === uuid) && (action === "RESULT")){
+            powerState = null
             const payload = JSON.parse(message.toString());
-            powerState = payload.POWER.toUpperCase()
-
-            console.log("[RESULT]")
+            if(payload.POWER != undefined){
+                console.log("[RESULT] Payload.POWER: ",payload.POWER)
+                powerState = payload.POWER.toUpperCase()
+                console.log("[RESULT] powerState: ",powerState)
+            }
+            if(powerState === "ON"){
+                responseFlag = 1
+            }else{
+                responseFlag = 0
+            }
+            console.log("responseFlag: ",responseFlag);
         }
     }
 })
@@ -123,18 +139,19 @@ clientSource.on('message', async(topic, message) => {
 
             if(payload.values[0].key === "cmd_ping"){
                 // Send publish to check rssi
-                clientTarget.publish(publishTopic, JSON.stringify({"status": "11"}))
+                clientTarget.publish(publishTopic, JSON.stringify({"status":"11"}))
                 setTimeout(() => {
                     console.log("Device RSSI now is: ",rssi)
                     if(rssi != null){
-                        clientSource.publish(`washcoin/${uuid}`, JSON.stringify({
+                        console.log("source PublishTopic: ",`${device.source.publishTopic.prefix}${uuid}`)
+                        clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify({
                             values:[
                                 {"key":"ans_status", "value":"alive"},
                                 {"key":"RSSI", "value":rssi}
                             ]
                         }))
                     }
-                },500)
+                },1500)
                 console.log(`   |-Published ans_status to sourceMQTT: ${sourceMqtt.mqttName}`);
             }
 
@@ -144,7 +161,7 @@ clientSource.on('message', async(topic, message) => {
                 // const payload = JSON.parse(message.toString());
                 const timer = payload.values[0].value;
                 const secTimer = parseInt(timer)
-                const miliTimer = secTimer * 1000
+                const miliTimer = (secTimer)* 1000 
                 
                 console.log("Action: ", payload.values[0].key)
                 console.log("Service time: ", secTimer)
@@ -152,17 +169,17 @@ clientSource.on('message', async(topic, message) => {
                 
                 /* -------------------- If 1 = use javascript timer, 0 = use device timer ------------------- */
                 clientTarget.publish(publishTopic, JSON.stringify({"pulseTime1": secTimer+100}))  //User Tasmota device timer must +100
-                clientTarget.publish(publishTopic, JSON.stringify({"power1": "on"})) // Turn on power 
+                clientTarget.publish(publishTopic, JSON.stringify({"power1":"on"})) // Turn on power 
 
                 // Send start notify to server
                 setTimeout( () => {
-                    let responseFlag = 0;
+                    
                     if(powerState === "ON"){
                         responseFlag = 1
                     }else{
                         setTimeout(()=>{
-                            clientTarget.publish(publishTopic, JSON.stringify({"state": ""}))
-                        },500)
+                            clientTarget.publish(publishTopic, JSON.stringify({"state":""}))
+                        },1500)
                         if(powerState === "ON"){
                             responseFlag = 1
                         }
@@ -177,40 +194,47 @@ clientSource.on('message', async(topic, message) => {
                             ] 
                         }
                         if(production){
-                            clientSource.publish(`washcoin/${uuid}`, JSON.stringify({resvalue}))
+                            clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
                         }
-                        console.log("cmd_timer-> Response message: ",resvalue)
+                        // console.log("cmd_timer-> Response message: ",resvalue)
                     }
-                },500)
+                },1500)
 
                 //Send stop notify to server
                 setTimeout( ()=> {
-                    let responseFlag = 0
-                    if(powerState === "OFF"){
-                        responseFlag = 1
-                    }else{ 
-                        setTimeout(()=>{
-                            clientTarget.publish(publishTopic, JSON.stringify({"state": ""}))
-                        },500)
-                        if(powerState === "ON"){
-                            responseFlag = 1
+
+                    let zeroCounter = 0
+                    //************************************************
+                    const intervalID = setInterval(()=>{
+                        if(powerState === "OFF"){
+                            responseFlag = 0
+                        }else{ 
+                            setTimeout(()=>{
+                                clientTarget.publish(publishTopic, JSON.stringify({"state":""}))
+                            },1500)
+                            if(powerState === "OFF"){
+                                responseFlag = 0
+                            }
                         }
-                    }
-                    
-                    if(responseFlag){
-                        const resvalue = {
-                            "values":[
-                                {"key":"ans_timer","value":"stop" },
-                                {"key":"asset","value":"" },
-                                {"key":"transactionid","value":payload.values[2].value}
-                            ] 
+                        
+                        if(!responseFlag){
+                            const resvalue = {
+                                "values":[
+                                    {"key":"ans_timer","value":"stop" },
+                                    {"key":"asset","value":"" },
+                                    {"key":"transactionid","value":payload.values[2].value}
+                                ] 
+                            }
+                            if(production){
+                                clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
+                            }
+                            // console.log("cmd_timer-> Response message: ",resvalue)
+                            clearTimeout(intervalID);
+                            clientTarget.publish(publishTopic, JSON.stringify({"pulseTime1": "0"}))  //User Tasmota device timer must +100
                         }
-                        if(production){
-                            clientSource.publish(`washcoin/${uuid}`, JSON.stringify({resvalue}))
-                        }
-                        console.log("cmd_timer-> Response message: ",resvalue)
-                    }
-                },(miliTimer+500))
+                    },10000)
+
+                },miliTimer)
             }
             /* --------------------------------------- Ending For Dryer machine only -------------------------------- */
 
@@ -220,17 +244,18 @@ clientSource.on('message', async(topic, message) => {
                 const secTimer = parseInt(timer)
                 const miliTimer = secTimer * 1000
 
-                clientTarget.publish(publishTopic, JSON.stringify({"power1": "on"})) // Turn on power 
+                clientTarget.publish(publishTopic, JSON.stringify({"power1":"on"})) // Turn on power 
                 
-                //Sending started status to server
                 setTimeout(()=>{
-                    let responseFlag = 0
+                    
+                    console.log("responseFlag: ",responseFlag)
+
                     if(powerState === "ON"){
                         responseFlag = 1
                     }else{
                         setTimeout(()=>{
-                            clientTarget.publish(publishTopic, JSON.stringify({"state": ""}))
-                        },500)
+                            clientTarget.publish(publishTopic, JSON.stringify({"state":""}))
+                        },1500)
                         if(powerState === "ON"){
                             responseFlag = 1
                         }
@@ -245,33 +270,43 @@ clientSource.on('message', async(topic, message) => {
                             ] 
                         }
                         if(production){
-                            clientSource.publish(`washcoin/${uuid}`, JSON.stringify({resvalue}))
+                            clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
                         }
-                        console.log("cmd_counter3-> Response message: ",resvalue)
+                        // console.log("cmd_counter3-> Response message: ",resvalue)
                     }
-                },500)
+                },1500)
+                //Sending started status to server
 
-                //Sending stop status to server
+                //This procedure use to send stop action to server
+                console.log("Staring monitor miliTimer: ",miliTimer)
                 setTimeout(()=>{
                     let zeroCounter = 0
-                    let responseFlag = 0
-                    const intervalID = setInterval(()=>{ // every 30s check current value
-                        clientTarget.publish(publishTopic, JSON.stringify({"status": "8"}))
+                    // let responseFlag = 0 
+
+                    const intervalID = setInterval(()=>{
+                        setTimeout(()=>{
+                            console.log("Checking current value")
+                            clientTarget.publish(publishTopic, JSON.stringify({"status": "8"}))
+                        },1500)
+
+                        console.log("[cmd_counter3] currentValue: ",currentValue)
+                        console.log("compare: ",currentValue <= 0.15)
                         if(currentValue <= 0.15){
                             zeroCounter++
-                            console.log("Counter: ",zeroCounter+"\n")
+                            console.log("Counter: ",zeroCounter)
                             if(zeroCounter >= 5){
-                                clientTarget.publish(publishTopic, JSON.stringify({"power": "off"}))
+                                clientTarget.publish(publishTopic, JSON.stringify({"power":"off"}))
                                 console.log("Reset Counter\n")
                                 clearTimeout(intervalID);
-
+    
                                 setTimeout(()=>{
+                                    console.log("powerState: ",powerState)
                                     if(powerState === "OFF"){
                                         responseFlag = 1
                                     }else{
                                         setTimeout(()=>{
                                             clientTarget.publish(publishTopic, JSON.stringify({"state": ""}))
-                                        },500)
+                                        },1500)
                                         if(powerState === "OFF"){
                                             responseFlag = 1
                                         }
@@ -286,17 +321,17 @@ clientSource.on('message', async(topic, message) => {
                                             ] 
                                         }
                                         if(production){
-                                            clientSource.publish(`washcoin/${uuid}`, JSON.stringify({resvalue}))
+                                            clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
                                         }
-                                        console.log("cmd_counter3-> Response message: ",resvalue)
+                                        // console.log("cmd_counter3-> Response message: ",resvalue)
                                     }
-                                },500)
-
+                                },1500)
                             }
                         }else{
                             zeroCounter = 0
+                            console.log("Machine still running... check again in 15 sec\n")
                         }
-                    },30000) // every 30s
+                    },10000)
                 },miliTimer)
             }
             /* --------------------------------------- Ending For Washing machine only -------------------------------- */
@@ -307,10 +342,10 @@ clientSource.on('message', async(topic, message) => {
                     console.log("Turn ON machine: ",device.target.name);
                     clientTarget.publish(publishTopic, JSON.stringify({"power1": "on"}))
                     setTimeout( () => {
-                        clientSource.publish(`washcoin/${uuid}`, JSON.stringify({
+                        clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify({
                             "values":[{"key":"ans_power","value":powerState.toLowerCase()}]
                         }))
-                    },500)
+                    },1500)
 
                 }
 
@@ -318,10 +353,10 @@ clientSource.on('message', async(topic, message) => {
                     console.log("Turn OFF machine: ",device.target.name);
                     clientTarget.publish(publishTopic, JSON.stringify({"power1": "off"}))
                     setTimeout( () => {
-                        clientSource.publish(`washcoin/${uuid}`, JSON.stringify({
+                        clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify({
                             "values":[{"key":"ans_power","value":powerState.toLowerCase()}]
                         }))
-                    },500)
+                    },1500)
                 }
 
             }

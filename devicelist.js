@@ -1,44 +1,44 @@
 const deviceList = [
-    {
-        "source":{
-            "name":"DF-96",
-            "uuid":"GH485S9W5482OQ2W5X7Z",
-            "type":"dryer",            
-            "subscribeTopic":{
-                "prefix":"washcoin/",
-                "subfix":"",
-            },
-            "publishTopic":{
-                "prefix":"washcoin/",
-                "subfix":"",
-            },
+    // {
+    //     "source":{
+    //         "name":"DF-96",
+    //         "uuid":"GH485S9W5482OQ2W5X7Z",
+    //         "type":"dryer",            
+    //         "subscribeTopic":{
+    //             "prefix":"washcoin/",
+    //             "subfix":"",
+    //         },
+    //         "publishTopic":{
+    //             "prefix":"washcoin/",
+    //             "subfix":"",
+    //         },
             
-        },
-        "target":{
-            "name":"DF-96",
-            "uuid":"C049EFEFD5CC",
-            "type":"dryer",
-            "subscribeTopic":{
-                "prefix":"relay/stat/",
-                "subfix":"",
-            },
-            "publishTopic":{
-                "prefix":"relay/cmnd/",
-                "subfix":"/json",
-            },   
-        }
-    },
+    //     },
+    //     "target":{
+    //         "name":"DF-96",
+    //         "uuid":"C049EFEFD5CC",
+    //         "type":"dryer",
+    //         "subscribeTopic":{
+    //             "prefix":"relay/stat/",
+    //             "subfix":"",
+    //         },
+    //         "publishTopic":{
+    //             "prefix":"relay/cmnd/",
+    //             "subfix":"/json",
+    //         },   
+    //     }
+    // },
     {
         "source":{
             "name":"WF-103",
             "uuid":"A7DIWY71138H4N56V5X7",
             "type":"washer",            
             "subscribeTopic":{
-                "prefix":"washcoin/",
+                "prefix":"washcointest/",
                 "subfix":"",
             },
             "publishTopic":{
-                "prefix":"washcoin/",
+                "prefix":"washcointest/",
                 "subfix":"",
             },
             

@@ -34,11 +34,11 @@ const deviceList = [
             "uuid":"A7DIWY71138H4N56V5X7",
             "type":"washer",            
             "subscribeTopic":{
-                "prefix":"washcointest/",
+                "prefix":"washcoin/",
                 "subfix":"",
             },
             "publishTopic":{
-                "prefix":"washcointest/",
+                "prefix":"washcoin/",
                 "subfix":"",
             },
             

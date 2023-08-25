@@ -5,7 +5,7 @@ const sourceMqtt = {
     mqttUser: "ilsrjeyw",
     mqttPass: "1riEi7_wHGpUA7r-oF76FF4ay81diLJr",
     mqttProtocal: 'mqtt',
-    mqttSubTopic: 'washcointest/#',
+    mqttSubTopic: 'washcoin/#',
 }
 
 const targetMqtt = {

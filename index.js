@@ -26,7 +26,7 @@ const production = 1;
 let rssi = null;
 let powerState = 0;
 let currentValue = 0;
-let responseFlag = 0;
+let isPowerON = 0;
 
 //*******************************  SourceMqtt Connection ********************************
 let clientSource = connect({
@@ -109,11 +109,11 @@ clientTarget.on('message', async(topic, message) => {
                 console.log("[RESULT] powerState: ",powerState)
             }
             if(powerState === "ON"){
-                responseFlag = 1
+                isPowerON = 1
             }else{
-                responseFlag = 0
+                isPowerON = 0
             }
-            console.log("responseFlag: ",responseFlag);
+            console.log("[RESULT] isPowerON: ",isPowerON);
         }
     }
 })
@@ -168,24 +168,17 @@ clientSource.on('message', async(topic, message) => {
                 console.log("miliTimer: ",miliTimer)
                 
                 /* -------------------- If 1 = use javascript timer, 0 = use device timer ------------------- */
+                console.log("[cmd_timer] Sending Power ON command...and wait for 3 second")
                 clientTarget.publish(publishTopic, JSON.stringify({"pulseTime1": secTimer+100}))  //User Tasmota device timer must +100
                 clientTarget.publish(publishTopic, JSON.stringify({"power1":"on"})) // Turn on power 
 
                 // Send start notify to server
-                setTimeout( () => {
-                    
-                    if(powerState === "ON"){
-                        responseFlag = 1
-                    }else{
-                        setTimeout(()=>{
-                            clientTarget.publish(publishTopic, JSON.stringify({"state":""}))
-                        },1500)
-                        if(powerState === "ON"){
-                            responseFlag = 1
-                        }
-                    }
-                    // console.log("responseFlag: ",responseFlag)
-                    if(responseFlag){
+                const isPowerONCheckID = setInterval( () => {
+                    console.log("[cmd_timer] After 3 sec reading isPowerON: ",isPowerON)
+    
+                    if(isPowerON){
+                        clearTimeout(isPowerONCheckID)
+
                         const resvalue = {
                             "values":[
                                 {"key":"ans_timer","value":"started" },
@@ -196,28 +189,14 @@ clientSource.on('message', async(topic, message) => {
                         if(production){
                             clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
                         }
-                        // console.log("cmd_timer-> Response message: ",resvalue)
-                    }
-                },1500)
 
-                //Send stop notify to server
-                setTimeout( ()=> {
-
-                    let zeroCounter = 0
-                    //************************************************
-                    const intervalID = setInterval(()=>{
-                        if(powerState === "OFF"){
-                            responseFlag = 0
-                        }else{ 
-                            setTimeout(()=>{
-                                clientTarget.publish(publishTopic, JSON.stringify({"state":""}))
-                            },1500)
-                            if(powerState === "OFF"){
-                                responseFlag = 0
-                            }
-                        }
-                        
-                        if(!responseFlag){
+                        //Start Monitoring for job by miliTimer...
+                        console.log("[cmd_timer] Staring monitor job for miliTimer: ",miliTimer)
+                        setTimeout( ()=> {
+                            let zeroCounter = 0
+                            //************************************************
+                            
+                            console.log("[cmd_timer] Job finish after miliTimer...")
                             const resvalue = {
                                 "values":[
                                     {"key":"ans_timer","value":"stop" },
@@ -229,12 +208,23 @@ clientSource.on('message', async(topic, message) => {
                                 clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
                             }
                             // console.log("cmd_timer-> Response message: ",resvalue)
-                            clearTimeout(intervalID);
+                            // clearTimeout(intervalID);
                             clientTarget.publish(publishTopic, JSON.stringify({"pulseTime1": "0"}))  //User Tasmota device timer must +100
-                        }
-                    },10000)
+                            console.log("[cmd_timer] Reset PulseTime to 0")
+                            if(isPowerOn){ // force power off
+                                console.log["Machine not power off... force power off"]
+                                clientTarget.publish(publishTopic, JSON.stringify({"power1": "off"}))
+                            }
+                        },miliTimer)
 
-                },miliTimer)
+                        // console.log("cmd_timer-> Response message: ",resvalue)
+                    }else{
+                        console.log("[cmd_timer] Power on machine but not response...")
+                    }
+                },3000)
+
+                //Send stop notify to server
+                
             }
             /* --------------------------------------- Ending For Dryer machine only -------------------------------- */
 
@@ -244,24 +234,14 @@ clientSource.on('message', async(topic, message) => {
                 const secTimer = parseInt(timer)
                 const miliTimer = secTimer * 1000
 
+                console.log("[cmd_counter3] Sending Power ON command...and wait for 3 second")
                 clientTarget.publish(publishTopic, JSON.stringify({"power1":"on"})) // Turn on power 
                 
-                setTimeout(()=>{
-                    
-                    console.log("responseFlag: ",responseFlag)
+                const isPowerONCheckID = setInterval(()=>{
+                    console.log("[cmd_counter3] After 3 sec reading isPowerON: ",isPowerON)
 
-                    if(powerState === "ON"){
-                        responseFlag = 1
-                    }else{
-                        setTimeout(()=>{
-                            clientTarget.publish(publishTopic, JSON.stringify({"state":""}))
-                        },1500)
-                        if(powerState === "ON"){
-                            responseFlag = 1
-                        }
-                    }
-                
-                    if(responseFlag){
+                    if(isPowerON){ //Double check power state by send state command
+                        clearTimeout(isPowerONCheckID)
                         const resvalue = { //Start
                             "values":[
                                 {"key":"ans_counter3","value":"started" },
@@ -272,67 +252,66 @@ clientSource.on('message', async(topic, message) => {
                         if(production){
                             clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
                         }
-                        // console.log("cmd_counter3-> Response message: ",resvalue)
-                    }
-                },1500)
-                //Sending started status to server
 
-                //This procedure use to send stop action to server
-                console.log("Staring monitor miliTimer: ",miliTimer)
-                setTimeout(()=>{
-                    let zeroCounter = 0
-                    // let responseFlag = 0 
-
-                    const intervalID = setInterval(()=>{
+                        //After machine on start monitor for miliTimer...
+                        console.log("[cmd_counter3] Staring monitor job for miliTimer: ",miliTimer)
                         setTimeout(()=>{
-                            console.log("Checking current value")
-                            clientTarget.publish(publishTopic, JSON.stringify({"status": "8"}))
-                        },1500)
+                            let zeroCounter = 0
 
-                        console.log("[cmd_counter3] currentValue: ",currentValue)
-                        console.log("compare: ",currentValue <= 0.15)
-                        if(currentValue <= 0.15){
-                            zeroCounter++
-                            console.log("Counter: ",zeroCounter)
-                            if(zeroCounter >= 5){
-                                clientTarget.publish(publishTopic, JSON.stringify({"power":"off"}))
-                                console.log("Reset Counter\n")
-                                clearTimeout(intervalID);
-    
+                            const intervalID = setInterval(()=>{
                                 setTimeout(()=>{
-                                    console.log("powerState: ",powerState)
-                                    if(powerState === "OFF"){
-                                        responseFlag = 1
-                                    }else{
-                                        setTimeout(()=>{
-                                            clientTarget.publish(publishTopic, JSON.stringify({"state": ""}))
-                                        },1500)
-                                        if(powerState === "OFF"){
-                                            responseFlag = 1
-                                        }
-                                    }
-    
-                                    if(responseFlag){
-                                        const resvalue = { //Stop
-                                            "values":[
-                                                {"key":"ans_counter3","value":"stop" },
-                                                {"key":"asset","value":payload.values[2].value },
-                                                {"key":"transactionid","value":payload.values[4].value}
-                                            ] 
-                                        }
-                                        if(production){
-                                            clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
-                                        }
-                                        // console.log("cmd_counter3-> Response message: ",resvalue)
-                                    }
+                                    console.log("[cmd_counter3] Checking current value")
+                                    clientTarget.publish(publishTopic, JSON.stringify({"status": "8"}))
                                 },1500)
-                            }
-                        }else{
-                            zeroCounter = 0
-                            console.log("Machine still running... check again in 15 sec\n")
-                        }
-                    },10000)
-                },miliTimer)
+        
+                                console.log("[cmd_counter3] currentValue: ",currentValue)
+                                console.log("[cmd_counter3] compare: ",currentValue <= 0.1)
+                                if(currentValue <= 0.1){
+                                    zeroCounter++
+                                    console.log("[cmd_counter3] Counter: ",zeroCounter)
+                                    if(zeroCounter >= 10){
+                                        clientTarget.publish(publishTopic, JSON.stringify({"power":"off"}))
+                                        console.log("[cmd_counter3] Reset Counter\n")
+                                        clearTimeout(intervalID);
+            
+                                        setTimeout(()=>{
+                                            console.log("[cmd_counter3] powerState: ",powerState)
+                                            if(powerState === "OFF"){
+                                                isPowerON = 1
+                                            }else{
+                                                setTimeout(()=>{
+                                                    clientTarget.publish(publishTopic, JSON.stringify({"state": ""}))
+                                                },1500)
+                                                if(powerState === "OFF"){
+                                                    isPowerON = 1
+                                                }
+                                            }
+            
+                                            if(isPowerON){
+                                                const resvalue = { //Stop
+                                                    "values":[
+                                                        {"key":"ans_counter3","value":"stop" },
+                                                        {"key":"asset","value":payload.values[2].value },
+                                                        {"key":"transactionid","value":payload.values[4].value}
+                                                    ] 
+                                                }
+                                                if(production){
+                                                    clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
+                                                }
+                                                // console.log("cmd_counter3-> Response message: ",resvalue)
+                                            }
+                                        },1500)
+                                    }
+                                }else{
+                                    zeroCounter = 0
+                                    console.log("[cmd_counter3] Machine still running... check again in 10 sec\n")
+                                }
+                            },10000)
+                        },miliTimer)
+                    }else{
+                        console.log("[cmd_counter3] Power on machine but not response...")
+                    }
+                },3000)
             }
             /* --------------------------------------- Ending For Washing machine only -------------------------------- */
 

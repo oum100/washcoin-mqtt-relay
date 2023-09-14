@@ -15,8 +15,8 @@
         2. Send that command via targetMqtt to specific device.
         3. Perform action on that device and reply the result back to sourceMqtt.
 */
-
-import { connect } from "mqtt";
+import {deviceStart,deviceStop} from "./washcoinapi.js"
+import { connect } from "mqtt"
 import { sourceMqtt, targetMqtt } from "./mqttcfg.js";
 import { deviceList } from "./devicelist.js";
 
@@ -155,7 +155,6 @@ clientSource.on('message', async(topic, message) => {
                 console.log(`   |-Published ans_status to sourceMQTT: ${sourceMqtt.mqttName}`);
             }
 
-
             /* --------------------------------------- For Dryer machine only -------------------------------- */
             if(payload.values[0].key === "cmd_timer"){
                 // const payload = JSON.parse(message.toString());
@@ -188,6 +187,7 @@ clientSource.on('message', async(topic, message) => {
                         }
                         if(production){
                             clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
+                            setTimeout(deviceStart(device.source.mac,payload.values[2].value),2000)
                         }
 
                         //Start Monitoring for job by miliTimer...
@@ -206,12 +206,13 @@ clientSource.on('message', async(topic, message) => {
                             }
                             if(production){
                                 clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
+                                setTimeout(deviceStop(uuid,payload.values[2].value),2000)
                             }
                             // console.log("cmd_timer-> Response message: ",resvalue)
                             // clearTimeout(intervalID);
                             clientTarget.publish(publishTopic, JSON.stringify({"pulseTime1": "0"}))  //User Tasmota device timer must +100
                             console.log("[cmd_timer] Reset PulseTime to 0")
-                            if(isPowerOn){ // force power off
+                            if(isPowerON){ // force power off
                                 console.log["Machine not power off... force power off"]
                                 clientTarget.publish(publishTopic, JSON.stringify({"power1": "off"}))
                             }
@@ -230,28 +231,43 @@ clientSource.on('message', async(topic, message) => {
 
             /* --------------------------------------- For Washing machine only -------------------------------- */
             if(payload.values[0].key === "cmd_counter3"){
-                const timer = payload.values[0].value;
+                const timer = payload.values[0].value
                 const secTimer = parseInt(timer)
                 const miliTimer = secTimer * 1000
+                const endDelay = parseInt(payload.values[3].value) * 1000
+                const transId = payload.values[4].value
 
                 console.log("[cmd_counter3] Sending Power ON command...and wait for 3 second")
+                console.log("endDelay: ",endDelay)
+
                 clientTarget.publish(publishTopic, JSON.stringify({"power1":"on"})) // Turn on power 
+                clientTarget.publish(publishTopic, JSON.stringify({"status":"8"})) // Get current value
                 
                 const isPowerONCheckID = setInterval(()=>{
                     console.log("[cmd_counter3] After 3 sec reading isPowerON: ",isPowerON)
 
                     if(isPowerON){ //Double check power state by send state command
                         clearTimeout(isPowerONCheckID)
-                        const resvalue = { //Start
-                            "values":[
-                                {"key":"ans_counter3","value":"started" },
-                                {"key":"token","value":uuid},
-                                {"key":"transactionid","value":payload.values[4].value}
-                            ] 
-                        }
+                        const resvalue = {"values":[{"key":"ans_counter3","value":"started" },{"key":"token","value":uuid},{"key":"transactionid","value":transId}]}
+                        
+                        // {"key":"wattActive","value":currentValue }
+                        const wattActive ={"values":[{"key":"wattActive","value":"0.000000" }]}
+
                         if(production){
                             clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
+                            setTimeout(()=>{
+                                clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(wattActive))
+                                // deviceStart(device.source.mac,payload.values[2].value)
+                                console.log("Mac: ",device.source.mac)
+                                console.log("TransId: ",transId)
+                                deviceStart(device.source.mac,transId)
+                            },2000)
+
+                            
                         }
+
+                        
+
 
                         //After machine on start monitor for miliTimer...
                         console.log("[cmd_counter3] Staring monitor job for miliTimer: ",miliTimer)
@@ -288,15 +304,18 @@ clientSource.on('message', async(topic, message) => {
                                             }
             
                                             if(isPowerON){
-                                                const resvalue = { //Stop
-                                                    "values":[
-                                                        {"key":"ans_counter3","value":"stop" },
-                                                        {"key":"asset","value":payload.values[2].value },
-                                                        {"key":"transactionid","value":payload.values[4].value}
-                                                    ] 
-                                                }
+                                                //ans_counter3 stop command
+                                                const resvalue = {"values":[{"key":"ans_counter3","value":"stop" },{"key":"asset","value":payload.values[2].value },{"key":"transactionid","value":payload.values[4].value}]}       
+                                        
+                                                // Increase delay before send response about 10 mins
                                                 if(production){
-                                                    clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
+                                                    setTimeout(() => {
+                                                        clientSource.publish(`${device.source.publishTopic.prefix}${uuid}`, JSON.stringify(resvalue))
+                                                        console.log("uuid: ",uuid)
+                                                        console.log("transId: ",transId)
+                                                        deviceStop(uuid,transId)
+                                                    },endDelay)  // 10mins
+                                                    
                                                 }
                                                 // console.log("cmd_counter3-> Response message: ",resvalue)
                                             }
@@ -340,6 +359,8 @@ clientSource.on('message', async(topic, message) => {
 
             }
             /* --------------------------------------- Ending For Power on, Power off All machine type -------------------------------- */
+            if(payload.values[0].key === "cmd_restart"){
+            }
         }
     }
 })
